@@ -11,7 +11,8 @@ using OpenQA.Selenium.Support.UI;
 using OpenQA.Selenium.PhantomJS;
 
 using System.Text.RegularExpressions;
-
+using System.IO;
+using System.Xml.Serialization;
 using Ticketns;
 namespace WebsiteContentParser
 {
@@ -22,24 +23,7 @@ namespace WebsiteContentParser
         public static void Main(string[] args)
 
         {
-            int count = 100;
-            for (int i = 0; i < count; i++)
-            {
-
-
-                Ticket[] ticketPack = GetNumberOrders("https://www.stoloto.ru/ruslotto/game?lastdraw");
-                if (ticketPack != null)
-                    foreach (Ticket tic in ticketPack)
-                    {
-                        tic.Write();
-                    }
-            }
-
-        }
-
-        static public Ticket[] GetNumberOrders(string URL)
-        {     
-
+            string URL = "https://www.stoloto.ru/ruslotto/game?draw=1212";
             PhantomJSDriverService service = PhantomJSDriverService.CreateDefaultService();
             service.IgnoreSslErrors = true;
             service.LoadImages = false;
@@ -47,11 +31,47 @@ namespace WebsiteContentParser
 
             IWebDriver driver = new PhantomJSDriver(service);
             driver.Navigate().GoToUrl(URL);
+           CountTicket countTicket = new CountTicket();
+            countTicket.NullAll();
+            for (int i = 0; i < 10000; i++)
+            {
+                Ticket[] ticketPack = GetNumberOrders(driver);
+                if (ticketPack != null)
+                {  
+                    foreach (Ticket tic in ticketPack)
+                    {
+                        if (countTicket.ExistsTicket(tic)==false)
+                        countTicket.AddList(tic);
+                    }
+                }
+                driver.FindElement(By.ClassName("refresh_btn")).Click();
+               
+            }
+
+            countTicket.CountUp();
+           
+
+
+            XmlSerializer formatter = new XmlSerializer(typeof(CountTicket));
+
+            using (FileStream fs = new FileStream("persons.xml", FileMode.OpenOrCreate))
+            {
+                formatter.Serialize(fs, countTicket);
+
+                Console.WriteLine("Объект сериализован");
+            }
+
+        }
+
+        static public Ticket[] GetNumberOrders(IWebDriver driver)
+        {     
+
+           
             
             HtmlAgilityPack.HtmlDocument doc = new HtmlAgilityPack.HtmlDocument();
 
             doc.LoadHtml(driver.PageSource);
-            //driver.Close();
+           
 
             HtmlNodeCollection ticketNodes = doc.DocumentNode.SelectNodes("//*[@class='bingo_ticket ruslotto']");
             HtmlNodeCollection numbersNodes = null;
@@ -93,7 +113,7 @@ namespace WebsiteContentParser
                                         .ToArray();
                                     foreach (int match in matches)
                                     {
-                                        ticket[k].number[match] = match;
+                                        ticket[k].number[match] = 1;
                                         ticket[k].amount++;
                                     }
                                 }
@@ -102,8 +122,6 @@ namespace WebsiteContentParser
                         ticket[k].numberticket = Convert.ToInt32(num.SelectSingleNode(".//*[@class='ticket_id']").InnerHtml);
                         k++;
                     }
-
-                    Console.WriteLine(k);
                 }
                 return ticket;
             }
